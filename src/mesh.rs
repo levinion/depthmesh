@@ -1,4 +1,5 @@
-use image::{EncodableLayout, GrayImage, RgbImage};
+use anyhow::{Result, bail};
+use image::{EncodableLayout, ImageBuffer, Luma, Rgb};
 use meshopt::{
     SimplifyOptions, VertexDataAdapter, generate_vertex_remap, remap_index_buffer,
     remap_vertex_buffer, simplify,
@@ -12,16 +13,49 @@ pub struct Mesh {
     normals: Vec<f32>,
 }
 
+type Luma32FImage = ImageBuffer<Luma<f32>, Vec<f32>>;
+type Rgb32FImage = ImageBuffer<Rgb<f32>, Vec<f32>>;
+
 impl Mesh {
-    pub fn new(img: GrayImage, scale: f32, normal: Option<RgbImage>) -> Self {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        img: Luma32FImage,
+        scale: f32,
+        threshold: f32,
+        normalize: bool,
+        fov: Option<f32>,
+        fx: Option<f32>,
+        fy: Option<f32>,
+        cx: Option<f32>,
+        cy: Option<f32>,
+        normal: Option<Rgb32FImage>,
+        mask: Option<Luma32FImage>,
+    ) -> Result<Self> {
         let (width, height) = img.dimensions();
+
+        let (fx, fy, cx, cy) = {
+            if let Some(fov) = fov {
+                let fx = (width as f32) / (2.0 * (fov.to_radians() / 2.0).tan());
+                let fy = fx;
+                let cx = (width as f32) / 2.0;
+                let cy = (height as f32) / 2.0;
+
+                (fx, fy, cx, cy)
+            } else if fx.is_some() && fy.is_some() && cx.is_some() && cy.is_some() {
+                #[allow(clippy::unnecessary_unwrap)]
+                (fx.unwrap(), fy.unwrap(), cx.unwrap(), cy.unwrap())
+            } else {
+                bail!("No camera params provided");
+            }
+        };
 
         let mut vertices: Vec<f32> = Vec::with_capacity((width * height * 3) as usize);
         let mut indices: Vec<u32> = Vec::new();
         let mut texcoords = Vec::with_capacity((width * height * 2) as usize);
         let mut normals = Vec::with_capacity((width * height * 3) as usize);
 
-        let mut valid = vec![false; (width * height) as usize];
+        let mut valid = vec![0u32; (width * height) as usize];
+        let mut index = 1;
 
         for y in 0..height {
             for x in 0..width {
@@ -29,40 +63,67 @@ impl Mesh {
                 // calculate vertices
                 let depth_value = pixel.0[0];
 
-                let idx = (y * width + x) as usize;
-                valid[idx] = depth_value > 0;
+                let drop = mask
+                    .as_ref()
+                    .map(|img| img.get_pixel(x, y).0[0] < 0.5)
+                    .unwrap_or(false);
 
-                let coord_x = x as f32;
-                let coord_y = (height - 1 - y) as f32;
-                let coord_z = depth_value as f32 * scale;
+                let is_valid = !drop && depth_value.is_finite() && depth_value > 1e-6;
 
-                vertices.push(coord_x);
-                vertices.push(coord_y);
-                vertices.push(coord_z);
+                if is_valid {
+                    let idx = (y * width + x) as usize;
+                    valid[idx] = index;
+                    index += 1;
 
-                // calculate texcoords
-                let u = x as f32 / (width - 1) as f32;
-                let v = 1.0 - y as f32 / (height - 1) as f32;
+                    let coord_z = depth_value * scale;
+                    let coord_x = (x as f32 - cx) * coord_z / fx;
+                    let coord_y = (cy - y as f32) * coord_z / fy;
 
-                texcoords.push(u);
-                texcoords.push(v);
+                    vertices.push(coord_x);
+                    vertices.push(coord_y);
+                    vertices.push(coord_z);
 
-                // calculate normals
-                if let Some(ref normal) = normal {
-                    let npixel = normal.get_pixel(x, y);
+                    // calculate texcoords
+                    let u = x as f32 / (width - 1) as f32;
+                    let v = 1.0 - y as f32 / (height - 1) as f32;
 
-                    let nx = npixel[0] as f32 / 255.0 * 2.0 - 1.0;
-                    let ny = npixel[1] as f32 / 255.0 * 2.0 - 1.0;
-                    let nz = npixel[2] as f32 / 255.0 * 2.0 - 1.0;
+                    texcoords.push(u);
+                    texcoords.push(v);
 
-                    let len = (nx * nx + ny * ny + nz * nz).sqrt();
+                    // calculate normals
+                    if let Some(ref normal) = normal {
+                        let npixel = normal.get_pixel(x, y);
 
-                    normals.push(nx / len);
-                    normals.push(ny / len);
-                    normals.push(nz / len);
+                        let nx = npixel[0];
+                        let ny = npixel[1];
+                        let nz = npixel[2];
+
+                        // 0-1 -> -1-1
+                        // let nx = nx * 2.0 - 1.0;
+                        // let ny = ny * 2.0 - 1.0;
+                        // let nz = nz * 2.0 - 1.0;
+
+                        let length = (nx * nx + ny * ny + nz * nz).sqrt();
+
+                        normals.push(nx / length);
+                        normals.push(-ny / length);
+                        normals.push(nz / length);
+                    }
                 }
             }
         }
+
+        let min_depth = vertices
+            .chunks_exact(3)
+            .map(|chuck| chuck[2])
+            .fold(f32::INFINITY, f32::min);
+
+        let max_depth = vertices
+            .chunks_exact(3)
+            .map(|chuck| chuck[2])
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        let max_depth_diff = max_depth - min_depth;
 
         for y in 0..(height - 1) {
             for x in 0..(width - 1) {
@@ -71,16 +132,31 @@ impl Mesh {
                 let v2 = ((y + 1) * width + x) as usize;
                 let v3 = ((y + 1) * width + (x + 1)) as usize;
 
-                if valid[v0] && valid[v1] && valid[v2] {
-                    indices.push(v0 as u32);
-                    indices.push(v2 as u32);
-                    indices.push(v1 as u32);
+                let d0 = img.get_pixel(x, y)[0];
+                let d1 = img.get_pixel(x + 1, y)[0];
+                let d2 = img.get_pixel(x, y + 1)[0];
+                let d3 = img.get_pixel(x + 1, y + 1)[0];
+
+                if valid[v0] > 0
+                    && valid[v1] > 0
+                    && valid[v2] > 0
+                    && (threshold <= 0.
+                        || crate::utils::max_depth_diff(&[d0, d1, d2]) / max_depth_diff < threshold)
+                {
+                    indices.push(valid[v0] - 1);
+                    indices.push(valid[v1] - 1);
+                    indices.push(valid[v2] - 1);
                 }
 
-                if valid[v1] && valid[v2] && valid[v3] {
-                    indices.push(v1 as u32);
-                    indices.push(v2 as u32);
-                    indices.push(v3 as u32);
+                if valid[v1] > 0
+                    && valid[v2] > 0
+                    && valid[v3] > 0
+                    && (threshold <= 0.
+                        || crate::utils::max_depth_diff(&[d1, d2, d3]) / max_depth_diff < threshold)
+                {
+                    indices.push(valid[v1] - 1);
+                    indices.push(valid[v2] - 1);
+                    indices.push(valid[v3] - 1);
                 }
             }
         }
@@ -92,8 +168,10 @@ impl Mesh {
             normals,
         };
 
-        mesh.normalize();
-        mesh
+        if normalize {
+            mesh.normalize();
+        }
+        Ok(mesh)
     }
 
     pub fn compute_normals(&mut self) {
@@ -211,10 +289,10 @@ impl Mesh {
         }
     }
 
-    pub fn optimize(&mut self, reduction: f32, error: f32) {
+    pub fn optimize(&mut self, reduction: f32, error: f32) -> Result<()> {
         let target_count = (self.indices.len() as f32 * reduction) as usize;
 
-        let vertex_data = VertexDataAdapter::new(self.vertices.as_bytes(), 12, 0).unwrap();
+        let vertex_data = VertexDataAdapter::new(self.vertices.as_bytes(), 12, 0)?;
 
         let indices = simplify(
             &self.indices,
@@ -240,29 +318,39 @@ impl Mesh {
         self.normals = remap_vertex_buffer(normals, vertex_count, &remap_table).into_flattened();
 
         self.indices = remap_index_buffer(Some(&indices), vertex_count, &remap_table);
+
+        Ok(())
     }
 
     pub fn smooth(&mut self, iterations: usize, lambda: f32) {
         crate::utils::laplacian_smooth(&mut self.vertices, &self.indices, iterations, lambda);
     }
 
-    pub fn write(&mut self, path: &str) {
-        let file = File::create(path).unwrap();
+    pub fn write(&mut self, path: &str) -> Result<()> {
+        let vertices = self.vertices.chunks_exact(3);
+        let texcoords = self.texcoords.chunks_exact(2);
+        let normals = self.normals.chunks_exact(3);
+
+        if vertices.len() != texcoords.len() || vertices.len() != normals.len() {
+            bail!("vertices, texcoords, normals not matched, the mesh will be wrong!");
+        }
+
+        let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
 
-        for v in self.vertices.chunks(3) {
-            writeln!(writer, "v {:.4} {:.4} {:.4}", v[0], v[1], v[2]).unwrap();
+        for v in self.vertices.chunks_exact(3) {
+            writeln!(writer, "v {:.6} {:.6} {:.6}", v[0], v[1], v[2])?;
         }
 
         for vt in self.texcoords.chunks_exact(2) {
-            writeln!(writer, "vt {:.4} {:.4}", vt[0], vt[1]).unwrap();
+            writeln!(writer, "vt {:.6} {:.6}", vt[0], vt[1])?;
         }
 
         if self.normals.is_empty() {
             self.compute_normals();
         }
         for vn in self.normals.chunks_exact(3) {
-            writeln!(writer, "vn {:.4} {:.4} {:.4}", vn[0], vn[1], vn[2]).unwrap();
+            writeln!(writer, "vn {:.6} {:.6} {:.6}", vn[0], vn[1], vn[2])?;
         }
 
         for f in self.indices.chunks_exact(3) {
@@ -272,10 +360,10 @@ impl Mesh {
                 f[0] + 1,
                 f[1] + 1,
                 f[2] + 1
-            )
-            .unwrap();
+            )?;
         }
 
-        writer.flush().unwrap();
+        writer.flush()?;
+        Ok(())
     }
 }

@@ -26,3 +26,9 @@ pub fn laplacian_smooth(vertices: &mut [f32], indices: &[u32], iterations: usize
         }
     }
 }
+
+pub fn max_depth_diff(depths: &[f32]) -> f32 {
+    let min = depths.iter().copied().fold(f32::INFINITY, f32::min);
+    let max = depths.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    max - min
+}
