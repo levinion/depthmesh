@@ -41,3 +41,7 @@ Options:
 ```shell
 depthmesh -i depth.exr -n normal.exr -f 90 -t 0.1 -o mesh.obj --optimize --smooth
 ```
+
+### Issue
+
+- If input image contains non-RGB channel such as 'Z' or 'Y', should convert it to 'R' instead.
