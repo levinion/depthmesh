@@ -1,5 +1,7 @@
 `depthmesh` is a cli tool that re-generates a mesh from a depth image.
 
+![assets/transform.png](assets/transform.png)
+
 ## Build
 
 ```shell
