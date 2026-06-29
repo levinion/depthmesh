@@ -16,7 +16,7 @@ pub struct Args {
     #[arg(short, long)]
     pub mask: Option<PathBuf>,
 
-    #[arg(short, long, default_value_t = 0.05)]
+    #[arg(short, long, default_value_t = 0.)]
     pub threshold: f32,
 
     #[arg(short, long, default_value_t = 1.0, allow_hyphen_values(true))]
