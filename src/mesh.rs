@@ -20,34 +20,17 @@ impl Mesh {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         img: Luma32FImage,
-        scale: f32,
         threshold: f32,
         normalize: bool,
-        fov: Option<f32>,
-        fx: Option<f32>,
-        fy: Option<f32>,
-        cx: Option<f32>,
-        cy: Option<f32>,
+        fov: f32,
         normal: Option<Rgb32FImage>,
-        mask: Option<Luma32FImage>,
     ) -> Result<Self> {
         let (width, height) = img.dimensions();
 
-        let (fx, fy, cx, cy) = {
-            if let Some(fov) = fov {
-                let fx = (width as f32) / (2.0 * (fov.to_radians() / 2.0).tan());
-                let fy = fx;
-                let cx = (width as f32) / 2.0;
-                let cy = (height as f32) / 2.0;
-
-                (fx, fy, cx, cy)
-            } else if fx.is_some() && fy.is_some() && cx.is_some() && cy.is_some() {
-                #[allow(clippy::unnecessary_unwrap)]
-                (fx.unwrap(), fy.unwrap(), cx.unwrap(), cy.unwrap())
-            } else {
-                bail!("No camera params provided");
-            }
-        };
+        let fx = (width as f32) / (2.0 * (fov.to_radians() / 2.0).tan());
+        let fy = fx;
+        let cx = (width as f32) / 2.0;
+        let cy = (height as f32) / 2.0;
 
         let mut vertices: Vec<f32> = Vec::with_capacity((width * height * 3) as usize);
         let mut indices: Vec<u32> = Vec::new();
@@ -63,19 +46,14 @@ impl Mesh {
                 // calculate vertices
                 let depth_value = pixel.0[0];
 
-                let drop = mask
-                    .as_ref()
-                    .map(|img| img.get_pixel(x, y).0[0] < 0.5)
-                    .unwrap_or(false);
-
-                let is_valid = !drop && depth_value.is_finite() && depth_value > 1e-6;
+                let is_valid = depth_value.is_finite() && depth_value > 1e-6;
 
                 if is_valid {
                     let idx = (y * width + x) as usize;
                     valid[idx] = index;
                     index += 1;
 
-                    let coord_z = depth_value * scale;
+                    let coord_z = depth_value;
                     let coord_x = (x as f32 - cx) * coord_z / fx;
                     let coord_y = (cy - y as f32) * coord_z / fy;
 

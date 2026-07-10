@@ -16,24 +16,7 @@ fn main() -> Result<()> {
         .map(|path| image::open(path).map(|img| img.to_rgb32f()))
         .transpose()?;
 
-    let mask = args
-        .mask
-        .map(|path| image::open(path).map(|img| img.to_luma32f()))
-        .transpose()?;
-
-    let mut mesh = Mesh::new(
-        img,
-        args.scale,
-        args.threshold,
-        args.normalize,
-        args.fov,
-        args.fx,
-        args.fy,
-        args.cx,
-        args.cy,
-        normal,
-        mask,
-    )?;
+    let mut mesh = Mesh::new(img, args.threshold, args.normalize, args.fov, normal)?;
 
     if args.smooth {
         mesh.smooth(args.iterations, args.lambda);
