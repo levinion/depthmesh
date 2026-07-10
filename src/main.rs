@@ -16,8 +16,11 @@ fn main() -> Result<()> {
         .map(|path| image::open(path).map(|img| img.to_rgb32f()))
         .transpose()?;
 
-    let mut mesh = Mesh::new(img, args.threshold, args.normalize, args.fov, normal)?;
+    let mut mesh = Mesh::new(img, args.threshold, args.fov, normal)?;
 
+    if args.normalize {
+        mesh.normalize();
+    }
     if args.smooth {
         mesh.smooth(args.iterations, args.lambda);
     }

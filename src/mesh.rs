@@ -21,7 +21,6 @@ impl Mesh {
     pub fn new(
         img: Luma32FImage,
         threshold: f32,
-        normalize: bool,
         fov: f32,
         normal: Option<Rgb32FImage>,
     ) -> Result<Self> {
@@ -139,16 +138,13 @@ impl Mesh {
             }
         }
 
-        let mut mesh = Self {
+        let mesh = Self {
             vertices,
             indices,
             texcoords,
             normals,
         };
 
-        if normalize {
-            mesh.normalize();
-        }
         Ok(mesh)
     }
 
@@ -208,7 +204,7 @@ impl Mesh {
         }
     }
 
-    fn normalize(&mut self) {
+    pub fn normalize(&mut self) {
         if self.vertices.is_empty() {
             return;
         }
