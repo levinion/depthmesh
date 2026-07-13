@@ -1,6 +1,6 @@
 `depthmesh` is a cli tool that re-generates a mesh from a depth image.
 
-![assets/transform.png](assets/transform.png)
+![assets/show.png](assets/show.png)
 
 ## Build
 
@@ -13,19 +13,22 @@ cargo install --path .
 ## Usage
 
 ```txt
-Usage: depthmesh [OPTIONS] --input <INPUT> --fov <FOV>
+Usage: depthmesh [OPTIONS]
 
 Options:
-  -i, --input <INPUT>
+  -d, --depth <DEPTH>
   -o, --output <OUTPUT>          [default: mesh.obj]
   -n, --normal <NORMAL>
-  -t, --threshold <THRESHOLD>    [default: 0]
-  -f, --fov <FOV>
+  -t, --threshold <THRESHOLD>
+  -i, --intrinsic <INTRINSIC>
+  -p, --pose <POSE>
+  -s, --scale <SCALE>
+  -r, --reverse-z
+  -D, --distance
       --optimize
       --reduction <REDUCTION>    [default: 0.1]
       --error <ERROR>            [default: 0.01]
       --smooth
-      --normalize
       --lambda <LAMBDA>          [default: 0.1]
       --iterations <ITERATIONS>  [default: 10]
   -h, --help                     Print help
@@ -35,8 +38,10 @@ Options:
 ### Example
 
 ```shell
-depthmesh -i depth.exr -n normal.exr -f 90 -t 0.1 -o mesh.obj --optimize --smooth
+depthmesh -d depth.exr -n normal.exr -i $(INTRINSIC) -t $(THRESHOLD) -s $(SCALE) --optimize --smooth -D
 ```
+
+See https://github.com/levinion/depthmesh/tree/main/examples for more.
 
 ### Issue
 
