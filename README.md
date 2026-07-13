@@ -45,4 +45,8 @@ See https://github.com/levinion/depthmesh/tree/main/examples for more.
 
 ### Issue
 
-- If input image contains non-RGB channel such as 'Z' or 'Y', should convert it to 'R' instead.
+- The input image can only be RGB image. If an image contains non-RGB channel such as 'Z' or 'Y', should convert it to 'R' instead. You can use `oiiotool` to do that:
+
+```shell
+oiiotool input.exr --ch R=Y,G=0,B=0 -o output.exr
+```
