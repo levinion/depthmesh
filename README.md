@@ -1,5 +1,7 @@
 `depthmesh` is a cli tool that re-generates a mesh from a depth image.
 
+![assets/transform.png](assets/transform.png)
+
 ## Build
 
 ```shell
@@ -11,20 +13,14 @@ cargo install --path .
 ## Usage
 
 ```txt
-Usage: depthmesh [OPTIONS] --input <INPUT>
+Usage: depthmesh [OPTIONS] --input <INPUT> --fov <FOV>
 
 Options:
   -i, --input <INPUT>
   -o, --output <OUTPUT>          [default: mesh.obj]
   -n, --normal <NORMAL>
-  -m, --mask <MASK>
   -t, --threshold <THRESHOLD>    [default: 0]
-  -s, --scale <SCALE>            [default: 1]
   -f, --fov <FOV>
-      --fx <FX>
-      --fy <FY>
-      --cx <CX>
-      --cy <CY>
       --optimize
       --reduction <REDUCTION>    [default: 0.1]
       --error <ERROR>            [default: 0.01]

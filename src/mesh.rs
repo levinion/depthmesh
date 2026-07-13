@@ -4,6 +4,7 @@ use meshopt::{
     SimplifyOptions, VertexDataAdapter, generate_vertex_remap, remap_index_buffer,
     remap_vertex_buffer, simplify,
 };
+use nalgebra::{Matrix3, Matrix4};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 pub struct Mesh {
@@ -11,6 +12,7 @@ pub struct Mesh {
     indices: Vec<u32>,
     texcoords: Vec<f32>,
     normals: Vec<f32>,
+    pose: Option<Matrix4<f32>>,
 }
 
 type Luma32FImage = ImageBuffer<Luma<f32>, Vec<f32>>;
@@ -19,35 +21,21 @@ type Rgb32FImage = ImageBuffer<Rgb<f32>, Vec<f32>>;
 impl Mesh {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        img: Luma32FImage,
-        scale: f32,
+        depth: Luma32FImage,
         threshold: f32,
-        normalize: bool,
-        fov: Option<f32>,
-        fx: Option<f32>,
-        fy: Option<f32>,
-        cx: Option<f32>,
-        cy: Option<f32>,
+        intrinsic: Matrix3<f32>,
         normal: Option<Rgb32FImage>,
-        mask: Option<Luma32FImage>,
+        pose: Option<Matrix4<f32>>,
+        scale: f32,
+        reverse_z: bool,
+        distance: bool,
     ) -> Result<Self> {
-        let (width, height) = img.dimensions();
+        let (width, height) = depth.dimensions();
 
-        let (fx, fy, cx, cy) = {
-            if let Some(fov) = fov {
-                let fx = (width as f32) / (2.0 * (fov.to_radians() / 2.0).tan());
-                let fy = fx;
-                let cx = (width as f32) / 2.0;
-                let cy = (height as f32) / 2.0;
-
-                (fx, fy, cx, cy)
-            } else if fx.is_some() && fy.is_some() && cx.is_some() && cy.is_some() {
-                #[allow(clippy::unnecessary_unwrap)]
-                (fx.unwrap(), fy.unwrap(), cx.unwrap(), cy.unwrap())
-            } else {
-                bail!("No camera params provided");
-            }
-        };
+        let fx = intrinsic[(0, 0)];
+        let fy = intrinsic[(1, 1)];
+        let cx = intrinsic[(0, 2)];
+        let cy = intrinsic[(1, 2)];
 
         let mut vertices: Vec<f32> = Vec::with_capacity((width * height * 3) as usize);
         let mut indices: Vec<u32> = Vec::new();
@@ -59,33 +47,43 @@ impl Mesh {
 
         for y in 0..height {
             for x in 0..width {
-                let pixel = img.get_pixel(x, y);
+                let pixel = depth.get_pixel(x, y);
                 // calculate vertices
-                let depth_value = pixel.0[0];
+                let depth_value = pixel.0[0] * scale;
 
-                let drop = mask
-                    .as_ref()
-                    .map(|img| img.get_pixel(x, y).0[0] < 0.5)
-                    .unwrap_or(false);
-
-                let is_valid = !drop && depth_value.is_finite() && depth_value > 1e-6;
+                let is_valid = depth_value.is_finite();
 
                 if is_valid {
                     let idx = (y * width + x) as usize;
                     valid[idx] = index;
                     index += 1;
 
-                    let coord_z = depth_value * scale;
-                    let coord_x = (x as f32 - cx) * coord_z / fx;
-                    let coord_y = (cy - y as f32) * coord_z / fy;
+                    let (coord_x, coord_y, coord_z) = if !distance {
+                        let coord_x = (x as f32 - cx) * depth_value / fx;
+                        let coord_y = (cy - y as f32) * depth_value / fy;
+                        let coord_z = if reverse_z { depth_value } else { -depth_value };
+                        (coord_x, coord_y, coord_z)
+                    } else {
+                        let rx = (x as f32 - cx) / fx;
+                        let ry = (cy - y as f32) / fy;
+
+                        let ray_len = (rx * rx + ry * ry + 1.0).sqrt();
+
+                        let z = depth_value / ray_len;
+
+                        let coord_x = rx * z;
+                        let coord_y = ry * z;
+                        let coord_z = if reverse_z { z } else { -z };
+                        (coord_x, coord_y, coord_z)
+                    };
 
                     vertices.push(coord_x);
                     vertices.push(coord_y);
                     vertices.push(coord_z);
 
                     // calculate texcoords
-                    let u = x as f32 / (width - 1) as f32;
-                    let v = 1.0 - y as f32 / (height - 1) as f32;
+                    let u = x as f32 / width as f32;
+                    let v = 1.0 - y as f32 / height as f32;
 
                     texcoords.push(u);
                     texcoords.push(v);
@@ -95,18 +93,13 @@ impl Mesh {
                         let npixel = normal.get_pixel(x, y);
 
                         let nx = npixel[0];
-                        let ny = npixel[1];
-                        let nz = npixel[2];
-
-                        // 0-1 -> -1-1
-                        // let nx = nx * 2.0 - 1.0;
-                        // let ny = ny * 2.0 - 1.0;
-                        // let nz = nz * 2.0 - 1.0;
+                        let ny = -npixel[1];
+                        let nz = if reverse_z { npixel[2] } else { -npixel[2] };
 
                         let length = (nx * nx + ny * ny + nz * nz).sqrt();
 
                         normals.push(nx / length);
-                        normals.push(-ny / length);
+                        normals.push(ny / length);
                         normals.push(nz / length);
                     }
                 }
@@ -132,16 +125,17 @@ impl Mesh {
                 let v2 = ((y + 1) * width + x) as usize;
                 let v3 = ((y + 1) * width + (x + 1)) as usize;
 
-                let d0 = img.get_pixel(x, y)[0];
-                let d1 = img.get_pixel(x + 1, y)[0];
-                let d2 = img.get_pixel(x, y + 1)[0];
-                let d3 = img.get_pixel(x + 1, y + 1)[0];
+                let d0 = depth.get_pixel(x, y)[0] * scale;
+                let d1 = depth.get_pixel(x + 1, y)[0] * scale;
+                let d2 = depth.get_pixel(x, y + 1)[0] * scale;
+                let d3 = depth.get_pixel(x + 1, y + 1)[0] * scale;
 
                 if valid[v0] > 0
                     && valid[v1] > 0
                     && valid[v2] > 0
                     && (threshold <= 0.
-                        || crate::utils::max_depth_diff(&[d0, d1, d2]) / max_depth_diff < threshold)
+                        || ((crate::utils::max_depth_diff(&[d0, d1, d2]) / max_depth_diff)
+                            < threshold))
                 {
                     indices.push(valid[v0] - 1);
                     indices.push(valid[v1] - 1);
@@ -152,7 +146,8 @@ impl Mesh {
                     && valid[v2] > 0
                     && valid[v3] > 0
                     && (threshold <= 0.
-                        || crate::utils::max_depth_diff(&[d1, d2, d3]) / max_depth_diff < threshold)
+                        || ((crate::utils::max_depth_diff(&[d1, d2, d3]) / max_depth_diff)
+                            < threshold))
                 {
                     indices.push(valid[v1] - 1);
                     indices.push(valid[v2] - 1);
@@ -161,16 +156,14 @@ impl Mesh {
             }
         }
 
-        let mut mesh = Self {
+        let mesh = Self {
             vertices,
             indices,
             texcoords,
             normals,
+            pose,
         };
 
-        if normalize {
-            mesh.normalize();
-        }
         Ok(mesh)
     }
 
@@ -230,7 +223,7 @@ impl Mesh {
         }
     }
 
-    fn normalize(&mut self) {
+    pub fn normalize(&mut self) {
         if self.vertices.is_empty() {
             return;
         }
@@ -353,17 +346,58 @@ impl Mesh {
             writeln!(writer, "vn {:.6} {:.6} {:.6}", vn[0], vn[1], vn[2])?;
         }
 
-        for f in self.indices.chunks_exact(3) {
+        for i in self.indices.chunks_exact(3) {
             writeln!(
                 writer,
                 "f {0}/{0}/{0} {1}/{1}/{1} {2}/{2}/{2}",
-                f[0] + 1,
-                f[1] + 1,
-                f[2] + 1
+                i[0] + 1,
+                i[1] + 1,
+                i[2] + 1
             )?;
         }
 
         writer.flush()?;
+        Ok(())
+    }
+
+    pub fn merge(&mut self, mut mesh: Mesh) -> Result<()> {
+        let transform = match (self.pose, mesh.pose) {
+            // C = T_world_to_cam * C_cam_to_world * C
+            (Some(target), Some(current)) => target.try_inverse().map(|inv| inv * current),
+            _ => bail!("Merge with no poses"),
+        };
+
+        if let Some(t) = transform {
+            let translation = t.fixed_view::<3, 1>(0, 3).into_owned();
+            let rotation = t.fixed_view::<3, 3>(0, 0).into_owned();
+
+            for v in mesh.vertices.chunks_exact_mut(3) {
+                let pos = nalgebra::Vector3::new(v[0], v[1], v[2]);
+                let transformed = rotation * pos + translation;
+                v[0] = transformed.x;
+                v[1] = transformed.y;
+                v[2] = transformed.z;
+            }
+
+            if !mesh.normals.is_empty() {
+                for n in mesh.normals.chunks_exact_mut(3) {
+                    let nn = (rotation * nalgebra::Vector3::new(n[0], n[1], n[2])).normalize();
+                    n[0] = nn.x;
+                    n[1] = nn.y;
+                    n[2] = nn.z;
+                }
+            }
+        }
+
+        let offset = self.vertices.len() as u32 / 3;
+        mesh.indices.iter_mut().for_each(|index| {
+            *index += offset;
+        });
+
+        self.vertices.append(&mut mesh.vertices);
+        self.normals.append(&mut mesh.normals);
+        self.texcoords.append(&mut mesh.texcoords);
+        self.indices.append(&mut mesh.indices);
         Ok(())
     }
 }

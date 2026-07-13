@@ -4,38 +4,32 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    #[arg(short, long)]
-    pub input: PathBuf,
+    #[arg(short, long, action = clap::ArgAction::Append)]
+    pub depth: Vec<PathBuf>,
 
     #[arg(short, long, default_value = "mesh.obj")]
     pub output: PathBuf,
 
-    #[arg(short, long)]
-    pub normal: Option<PathBuf>,
+    #[arg(short, long, action = clap::ArgAction::Append)]
+    pub normal: Vec<PathBuf>,
 
-    #[arg(short, long)]
-    pub mask: Option<PathBuf>,
+    #[arg(short, long, action = clap::ArgAction::Append)]
+    pub threshold: Vec<f32>,
 
-    #[arg(short, long, default_value_t = 0.)]
-    pub threshold: f32,
+    #[arg(short, long, action = clap::ArgAction::Append)]
+    pub intrinsic: Vec<String>,
 
-    #[arg(short, long, default_value_t = 1.0, allow_hyphen_values(true))]
-    pub scale: f32,
+    #[arg(short, long, action = clap::ArgAction::Append)]
+    pub pose: Vec<String>,
 
-    #[arg(short, long)]
-    pub fov: Option<f32>,
+    #[arg(short, long, action = clap::ArgAction::Append)]
+    pub scale: Vec<f32>,
 
-    #[arg(long)]
-    pub fx: Option<f32>,
+    #[arg(short, long, default_value_t = false)]
+    pub reverse_z: bool,
 
-    #[arg(long)]
-    pub fy: Option<f32>,
-
-    #[arg(long)]
-    pub cx: Option<f32>,
-
-    #[arg(long)]
-    pub cy: Option<f32>,
+    #[arg(short = 'D', long, default_value_t = false)]
+    pub distance: bool,
 
     #[arg(long, default_value_t = false)]
     pub optimize: bool,
