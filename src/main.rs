@@ -56,22 +56,22 @@ fn main() -> Result<()> {
     let meshes = {
         let meshes: Result<Vec<Mesh>> = (0..n)
             .map(|i| {
-                let img = image::open(&args.depth[i])
+                let depth = image::open(&args.depth[i])
                     .map_err(|e| {
                         anyhow::anyhow!(
-                            "Failed to open input image '{}': {}",
+                            "Failed to open depth image '{}': {}",
                             args.depth[i].display(),
                             e
                         )
                     })?
-                    .to_luma32f();
+                    .to_rgb32f();
 
                 let normal = if !args.normal.is_empty() {
                     Some(
                         image::open(&args.normal[i])
                             .map_err(|e| {
                                 anyhow::anyhow!(
-                                    "Failed to open normal map '{}': {}",
+                                    "Failed to open normal image '{}': {}",
                                     args.normal[i].display(),
                                     e
                                 )
@@ -113,7 +113,7 @@ fn main() -> Result<()> {
                 };
 
                 Mesh::new(
-                    img,
+                    depth,
                     args.threshold[i],
                     intrinsic,
                     normal,
@@ -143,9 +143,6 @@ fn main() -> Result<()> {
         mesh
     };
 
-    if args.normalize {
-        mesh.normalize();
-    }
     if args.smooth {
         mesh.smooth(args.iterations, args.lambda);
     }

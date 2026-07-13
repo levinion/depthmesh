@@ -43,9 +43,6 @@ pub struct Args {
     #[arg(long, default_value_t = false)]
     pub smooth: bool,
 
-    #[arg(long, default_value_t = false)]
-    pub normalize: bool,
-
     #[arg(long, default_value_t = 0.1)]
     pub lambda: f32,
 

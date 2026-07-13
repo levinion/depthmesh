@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use image::{EncodableLayout, ImageBuffer, Luma, Rgb};
+use image::{EncodableLayout, ImageBuffer, Rgb};
 use meshopt::{
     SimplifyOptions, VertexDataAdapter, generate_vertex_remap, remap_index_buffer,
     remap_vertex_buffer, simplify,
@@ -15,13 +15,12 @@ pub struct Mesh {
     pose: Option<Matrix4<f32>>,
 }
 
-type Luma32FImage = ImageBuffer<Luma<f32>, Vec<f32>>;
 type Rgb32FImage = ImageBuffer<Rgb<f32>, Vec<f32>>;
 
 impl Mesh {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        depth: Luma32FImage,
+        depth: Rgb32FImage,
         threshold: f32,
         intrinsic: Matrix3<f32>,
         normal: Option<Rgb32FImage>,
@@ -57,20 +56,15 @@ impl Mesh {
                     let idx = (y * width + x) as usize;
                     valid[idx] = index;
                     index += 1;
-
-                    let (coord_x, coord_y, coord_z) = if !distance {
-                        let coord_x = (x as f32 - cx) * depth_value / fx;
-                        let coord_y = (cy - y as f32) * depth_value / fy;
-                        let coord_z = if reverse_z { depth_value } else { -depth_value };
-                        (coord_x, coord_y, coord_z)
-                    } else {
+                    let (coord_x, coord_y, coord_z) = {
                         let rx = (x as f32 - cx) / fx;
                         let ry = (cy - y as f32) / fy;
-
-                        let ray_len = (rx * rx + ry * ry + 1.0).sqrt();
-
-                        let z = depth_value / ray_len;
-
+                        let z = if distance {
+                            let ray_len = (rx * rx + ry * ry + 1.0).sqrt();
+                            depth_value / ray_len
+                        } else {
+                            depth_value
+                        };
                         let coord_x = rx * z;
                         let coord_y = ry * z;
                         let coord_z = if reverse_z { z } else { -z };
@@ -130,11 +124,20 @@ impl Mesh {
                 let d2 = depth.get_pixel(x, y + 1)[0] * scale;
                 let d3 = depth.get_pixel(x + 1, y + 1)[0] * scale;
 
+                let (z0, z1, z2, z3) = if distance {
+                    let rx = (x as f32 - cx) / fx;
+                    let ry = (cy - y as f32) / fy;
+                    let ray_len = (rx * rx + ry * ry + 1.0).sqrt();
+                    (d0 / ray_len, d1 / ray_len, d2 / ray_len, d3 / ray_len)
+                } else {
+                    (d0, d1, d2, d3)
+                };
+
                 if valid[v0] > 0
                     && valid[v1] > 0
                     && valid[v2] > 0
                     && (threshold <= 0.
-                        || ((crate::utils::max_depth_diff(&[d0, d1, d2]) / max_depth_diff)
+                        || ((crate::utils::max_depth_diff(&[z0, z1, z2]) / max_depth_diff)
                             < threshold))
                 {
                     indices.push(valid[v0] - 1);
@@ -146,7 +149,7 @@ impl Mesh {
                     && valid[v2] > 0
                     && valid[v3] > 0
                     && (threshold <= 0.
-                        || ((crate::utils::max_depth_diff(&[d1, d2, d3]) / max_depth_diff)
+                        || ((crate::utils::max_depth_diff(&[z1, z2, z3]) / max_depth_diff)
                             < threshold))
                 {
                     indices.push(valid[v1] - 1);
@@ -220,65 +223,6 @@ impl Mesh {
                 n[1] /= len;
                 n[2] /= len;
             }
-        }
-    }
-
-    pub fn normalize(&mut self) {
-        if self.vertices.is_empty() {
-            return;
-        }
-
-        let mut min_x = f32::INFINITY;
-        let mut max_x = f32::NEG_INFINITY;
-        let mut min_y = f32::INFINITY;
-        let mut max_y = f32::NEG_INFINITY;
-        let mut min_z = f32::INFINITY;
-        let mut max_z = f32::NEG_INFINITY;
-
-        for chunk in self.vertices.chunks_exact(3) {
-            let x = chunk[0];
-            let y = chunk[1];
-            let z = chunk[2];
-
-            if x < min_x {
-                min_x = x;
-            }
-            if x > max_x {
-                max_x = x;
-            }
-            if y < min_y {
-                min_y = y;
-            }
-            if y > max_y {
-                max_y = y;
-            }
-            if z < min_z {
-                min_z = z;
-            }
-            if z > max_z {
-                max_z = z;
-            }
-        }
-
-        let center_x = (min_x + max_x) / 2.0;
-        let center_y = (min_y + max_y) / 2.0;
-        let center_z = (min_z + max_z) / 2.0;
-
-        let span_x = max_x - min_x;
-        let span_y = max_y - min_y;
-        let span_z = max_z - min_z;
-
-        let max_span = span_x.max(span_y).max(span_z);
-        if max_span == 0.0 {
-            return;
-        }
-
-        let scale = 2.0 / max_span;
-
-        for chunk in self.vertices.chunks_exact_mut(3) {
-            chunk[0] = (chunk[0] - center_x) * scale;
-            chunk[1] = (chunk[1] - center_y) * scale;
-            chunk[2] = (chunk[2] - center_z) * scale;
         }
     }
 
@@ -364,7 +308,7 @@ impl Mesh {
         let transform = match (self.pose, mesh.pose) {
             // C = T_world_to_cam * C_cam_to_world * C
             (Some(target), Some(current)) => target.try_inverse().map(|inv| inv * current),
-            _ => bail!("Merge with no poses"),
+            _ => None,
         };
 
         if let Some(t) = transform {
@@ -387,6 +331,8 @@ impl Mesh {
                     n[2] = nn.z;
                 }
             }
+        } else {
+            bail!("Merge meshes without poses")
         }
 
         let offset = self.vertices.len() as u32 / 3;
