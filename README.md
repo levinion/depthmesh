@@ -13,32 +13,33 @@ cargo install --path .
 ## Usage
 
 ```txt
-Usage: depthmesh [OPTIONS]
+Usage: depthmesh [OPTIONS] --depth <DEPTH> --output <OUTPUT> --intrinsic <INTRINSIC>
 
 Options:
   -d, --depth <DEPTH>
-  -o, --output <OUTPUT>          [default: mesh.obj]
+  -o, --output <OUTPUT>
   -n, --normal <NORMAL>
-  -t, --threshold <THRESHOLD>
+  -t, --threshold <THRESHOLD>      [default: 0.1]
   -i, --intrinsic <INTRINSIC>
-  -p, --pose <POSE>
-  -s, --scale <SCALE>
+      --source-pose <SOURCE_POSE>
+      --target-pose <TARGET_POSE>
+  -s, --scale <SCALE>              [default: 1]
   -r, --reverse-z
   -D, --distance
       --optimize
-      --reduction <REDUCTION>    [default: 0.1]
-      --error <ERROR>            [default: 0.01]
+      --reduction <REDUCTION>      [default: 0.1]
+      --error <ERROR>              [default: 0.01]
       --smooth
-      --lambda <LAMBDA>          [default: 0.1]
-      --iterations <ITERATIONS>  [default: 10]
-  -h, --help                     Print help
-  -V, --version                  Print version
+      --lambda <LAMBDA>            [default: 0.1]
+      --iterations <ITERATIONS>    [default: 10]
+  -h, --help                       Print help
+  -V, --version                    Print version
 ```
 
 ### Example
 
 ```shell
-depthmesh -d depth.exr -n normal.exr -i $(INTRINSIC) -t $(THRESHOLD) -s $(SCALE) --optimize --smooth -D
+depthmesh -d depth.exr -n normal.exr -i $(INTRINSIC) -o mesh.obj --optimize --smooth 
 ```
 
 See https://github.com/levinion/depthmesh/tree/main/examples for more.

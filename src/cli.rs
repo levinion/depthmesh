@@ -4,26 +4,29 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    #[arg(short, long, action = clap::ArgAction::Append)]
-    pub depth: Vec<PathBuf>,
+    #[arg(short, long)]
+    pub depth: PathBuf,
 
-    #[arg(short, long, default_value = "mesh.obj")]
+    #[arg(short, long)]
     pub output: PathBuf,
 
-    #[arg(short, long, action = clap::ArgAction::Append)]
-    pub normal: Vec<PathBuf>,
+    #[arg(short, long)]
+    pub normal: Option<PathBuf>,
 
-    #[arg(short, long, action = clap::ArgAction::Append)]
-    pub threshold: Vec<f32>,
+    #[arg(short, long, default_value_t = 0.1)]
+    pub threshold: f32,
 
-    #[arg(short, long, action = clap::ArgAction::Append)]
-    pub intrinsic: Vec<String>,
+    #[arg(short, long)]
+    pub intrinsic: String,
 
-    #[arg(short, long, action = clap::ArgAction::Append)]
-    pub pose: Vec<String>,
+    #[arg(long)]
+    pub source_pose: Option<String>,
 
-    #[arg(short, long, action = clap::ArgAction::Append)]
-    pub scale: Vec<f32>,
+    #[arg(long)]
+    pub target_pose: Option<String>,
+
+    #[arg(short, long, default_value_t = 1.0)]
+    pub scale: f32,
 
     #[arg(short, long, default_value_t = false)]
     pub reverse_z: bool,

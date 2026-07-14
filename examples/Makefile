@@ -11,9 +11,14 @@ single-view:
 	depthmesh -d ./depth/cam_00_frame.0000.exr -n ./normal/cam_00_frame.0000.exr -i $(INTRINSIC) -t $(THRESHOLD) -s $(SCALE) --optimize --smooth -D
 
 multi-view:
-	depthmesh \
-		-d ./depth/cam_00_frame.0000.exr -n ./normal/cam_00_frame.0000.exr -i $(INTRINSIC) -t $(THRESHOLD) -s $(SCALE) -p $(VIEW1_POSE) \
-		-d ./depth/cam_00_frame.0001.exr -n ./normal/cam_00_frame.0001.exr -i $(INTRINSIC) -t $(THRESHOLD) -s $(SCALE) -p $(VIEW2_POSE) \
-		-D --optimize --smooth
+	depthmesh -d ./depth/cam_00_frame.0000.exr -n ./normal/cam_00_frame.0000.exr \
+		-i $(INTRINSIC) -t $(THRESHOLD) -s $(SCALE) \
+		--optimize --smooth -D \
+		-o view1.obj
+	depthmesh -d ./depth/cam_00_frame.0000.exr -n ./normal/cam_00_frame.0000.exr \
+		-i $(INTRINSIC) -t $(THRESHOLD) -s $(SCALE) \
+		--source-pose $(VIEW1_POSE) --target-pose $(VIEW2_POSE) \
+		--optimize --smooth -D \
+		-o view2.obj
 
 .PHONY: default single-view multi-view

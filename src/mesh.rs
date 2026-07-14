@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use image::{EncodableLayout, ImageBuffer, Rgb};
 use meshopt::{
     SimplifyOptions, VertexDataAdapter, generate_vertex_remap, remap_index_buffer,
@@ -12,7 +12,6 @@ pub struct Mesh {
     indices: Vec<u32>,
     texcoords: Vec<f32>,
     normals: Vec<f32>,
-    pose: Option<Matrix4<f32>>,
 }
 
 type Rgb32FImage = ImageBuffer<Rgb<f32>, Vec<f32>>;
@@ -24,7 +23,6 @@ impl Mesh {
         threshold: f32,
         intrinsic: Matrix3<f32>,
         normal: Option<Rgb32FImage>,
-        pose: Option<Matrix4<f32>>,
         scale: f32,
         reverse_z: bool,
         distance: bool,
@@ -164,7 +162,6 @@ impl Mesh {
             indices,
             texcoords,
             normals,
-            pose,
         };
 
         Ok(mesh)
@@ -304,46 +301,33 @@ impl Mesh {
         Ok(())
     }
 
-    pub fn merge(&mut self, mut mesh: Mesh) -> Result<()> {
-        let transform = match (self.pose, mesh.pose) {
-            // C = T_world_to_cam * C_cam_to_world * C
-            (Some(target), Some(current)) => target.try_inverse().map(|inv| inv * current),
-            _ => None,
-        };
+    pub fn transform(&mut self, src: Matrix4<f32>, target: Matrix4<f32>) -> Result<()> {
+        // S = T_world_to_cam * S_cam_to_world * S
+        let t = target
+            .try_inverse()
+            .map(|inv| inv * src)
+            .context("cannot inverse target pose matrix")?;
 
-        if let Some(t) = transform {
-            let translation = t.fixed_view::<3, 1>(0, 3).into_owned();
-            let rotation = t.fixed_view::<3, 3>(0, 0).into_owned();
+        let translation = t.fixed_view::<3, 1>(0, 3).into_owned();
+        let rotation = t.fixed_view::<3, 3>(0, 0).into_owned();
 
-            for v in mesh.vertices.chunks_exact_mut(3) {
-                let pos = nalgebra::Vector3::new(v[0], v[1], v[2]);
-                let transformed = rotation * pos + translation;
-                v[0] = transformed.x;
-                v[1] = transformed.y;
-                v[2] = transformed.z;
-            }
-
-            if !mesh.normals.is_empty() {
-                for n in mesh.normals.chunks_exact_mut(3) {
-                    let nn = (rotation * nalgebra::Vector3::new(n[0], n[1], n[2])).normalize();
-                    n[0] = nn.x;
-                    n[1] = nn.y;
-                    n[2] = nn.z;
-                }
-            }
-        } else {
-            bail!("Merge meshes without poses")
+        for v in self.vertices.chunks_exact_mut(3) {
+            let pos = nalgebra::Vector3::new(v[0], v[1], v[2]);
+            let transformed = rotation * pos + translation;
+            v[0] = transformed.x;
+            v[1] = transformed.y;
+            v[2] = transformed.z;
         }
 
-        let offset = self.vertices.len() as u32 / 3;
-        mesh.indices.iter_mut().for_each(|index| {
-            *index += offset;
-        });
+        if !self.normals.is_empty() {
+            for n in self.normals.chunks_exact_mut(3) {
+                let nn = (rotation * nalgebra::Vector3::new(n[0], n[1], n[2])).normalize();
+                n[0] = nn.x;
+                n[1] = nn.y;
+                n[2] = nn.z;
+            }
+        }
 
-        self.vertices.append(&mut mesh.vertices);
-        self.normals.append(&mut mesh.normals);
-        self.texcoords.append(&mut mesh.texcoords);
-        self.indices.append(&mut mesh.indices);
         Ok(())
     }
 }
