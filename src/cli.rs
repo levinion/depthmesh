@@ -16,19 +16,19 @@ pub struct Args {
     #[arg(short, long, default_value_t = 0.1)]
     pub threshold: f32,
 
-    #[arg(short, long)]
+    #[arg(short, long, allow_hyphen_values = true)]
     pub intrinsic: String,
 
-    #[arg(long)]
+    #[arg(long, allow_hyphen_values = true)]
     pub source_pose: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, allow_hyphen_values = true)]
     pub target_pose: Option<String>,
 
-    #[arg(long, default_value_t = 0.0)]
+    #[arg(long, default_value_t = 0.0, allow_negative_numbers = true)]
     pub offset: f32,
 
-    #[arg(short, long, default_value_t = 1.0)]
+    #[arg(short, long, default_value_t = 1.0, allow_negative_numbers = true)]
     pub scale: f32,
 
     #[arg(short, long, default_value_t = false)]

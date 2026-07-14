@@ -86,9 +86,9 @@ impl Mesh {
                     if let Some(ref normal) = normal {
                         let npixel = normal.get_pixel(x, y);
 
-                        let nx = npixel[0];
-                        let ny = -npixel[1];
-                        let nz = if reverse_z { npixel[2] } else { -npixel[2] };
+                        let nx = -npixel[0];
+                        let ny = npixel[1];
+                        let nz = if reverse_z { -npixel[2] } else { npixel[2] };
 
                         let length = (nx * nx + ny * ny + nz * nz).sqrt();
 
