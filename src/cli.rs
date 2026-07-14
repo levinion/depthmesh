@@ -25,6 +25,9 @@ pub struct Args {
     #[arg(long)]
     pub target_pose: Option<String>,
 
+    #[arg(long, default_value_t = 0.0)]
+    pub offset: f32,
+
     #[arg(short, long, default_value_t = 1.0)]
     pub scale: f32,
 

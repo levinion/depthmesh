@@ -12,6 +12,7 @@ pub struct Mesh {
     indices: Vec<u32>,
     texcoords: Vec<f32>,
     normals: Vec<f32>,
+    offset: f32,
 }
 
 type Rgb32FImage = ImageBuffer<Rgb<f32>, Vec<f32>>;
@@ -26,6 +27,7 @@ impl Mesh {
         scale: f32,
         reverse_z: bool,
         distance: bool,
+        offset: f32,
     ) -> Result<Self> {
         let (width, height) = depth.dimensions();
 
@@ -162,6 +164,7 @@ impl Mesh {
             indices,
             texcoords,
             normals,
+            offset,
         };
 
         Ok(mesh)
@@ -316,7 +319,7 @@ impl Mesh {
             let transformed = rotation * pos + translation;
             v[0] = transformed.x;
             v[1] = transformed.y;
-            v[2] = transformed.z;
+            v[2] = transformed.z - self.offset;
         }
 
         if !self.normals.is_empty() {

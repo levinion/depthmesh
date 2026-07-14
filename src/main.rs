@@ -41,6 +41,7 @@ fn main() -> Result<()> {
         args.scale,
         args.reverse_z,
         args.distance,
+        args.offset,
     )?;
 
     let src = match args.source_pose {
