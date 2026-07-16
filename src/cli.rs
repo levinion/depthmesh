@@ -13,6 +13,18 @@ pub struct Args {
     #[arg(short, long)]
     pub normal: Option<PathBuf>,
 
+    #[arg(short, long)]
+    pub albedo: Option<PathBuf>,
+
+    #[arg(short = 'O', long)]
+    pub opacity: Option<PathBuf>,
+
+    #[arg(short, long)]
+    pub roughness: Option<PathBuf>,
+
+    #[arg(short, long)]
+    pub metallic: Option<PathBuf>,
+
     #[arg(short, long, default_value_t = 0.1)]
     pub threshold: f32,
 
@@ -25,13 +37,13 @@ pub struct Args {
     #[arg(long, allow_hyphen_values = true)]
     pub target_pose: Option<String>,
 
-    #[arg(long, default_value_t = 0.0, allow_negative_numbers = true)]
+    #[arg(long, default_value_t = 0.0)]
     pub offset: f32,
 
     #[arg(short, long, default_value_t = 1.0, allow_negative_numbers = true)]
     pub scale: f32,
 
-    #[arg(short, long, default_value_t = false)]
+    #[arg(long, default_value_t = false)]
     pub reverse_z: bool,
 
     #[arg(short = 'D', long, default_value_t = false)]

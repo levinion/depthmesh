@@ -12,11 +12,6 @@ fn main() -> Result<()> {
 
     let depth = image::open(args.depth)?.to_rgb32f();
 
-    let normal = args
-        .normal
-        .map(|normal| image::open(normal).map(|img| img.to_rgb32f()))
-        .transpose()?;
-
     let intrinsic = {
         let matrix_data: Vec<f32> = args
             .intrinsic
@@ -37,11 +32,9 @@ fn main() -> Result<()> {
         depth,
         args.threshold,
         intrinsic,
-        normal,
         args.scale,
         args.reverse_z,
         args.distance,
-        args.offset,
     )?;
 
     let src = match args.source_pose {
@@ -73,14 +66,64 @@ fn main() -> Result<()> {
     };
 
     if let (Some(src), Some(target)) = (src, target) {
-        mesh.transform(src, target)?;
+        mesh.transform(src, target, args.offset)?;
     }
 
     if args.smooth {
         mesh.smooth(args.iterations, args.lambda);
     }
+
     if args.optimize {
         mesh.optimize(args.reduction, args.error)?;
+    }
+
+    let normal = args
+        .normal
+        .map(|path| image::open(path).map(|img| img.to_rgb32f()))
+        .transpose()?;
+
+    let albedo = args
+        .albedo
+        .map(|path| image::open(path).map(|img| img.to_rgb32f()))
+        .transpose()?;
+
+    let roughness = args
+        .roughness
+        .map(|path| image::open(path).map(|img| img.to_rgb32f()))
+        .transpose()?;
+
+    let metallic = args
+        .metallic
+        .map(|path| image::open(path).map(|img| img.to_rgb32f()))
+        .transpose()?;
+
+    let opacity = args
+        .opacity
+        .map(|path| image::open(path).map(|img| img.to_rgb32f()))
+        .transpose()?;
+
+    if let Some(normal) = normal {
+        mesh.sample("nx", &normal, 0);
+        mesh.sample("ny", &normal, 1);
+        mesh.sample("nz", &normal, 2);
+    }
+
+    if let Some(albedo) = albedo {
+        mesh.sample("red", &albedo, 0);
+        mesh.sample("green", &albedo, 1);
+        mesh.sample("blue", &albedo, 2);
+    }
+
+    if let Some(roughness) = roughness {
+        mesh.sample("vertex_roughness", &roughness, 0);
+    }
+
+    if let Some(metallic) = metallic {
+        mesh.sample("vertex_metallic", &metallic, 0);
+    }
+
+    if let Some(opacity) = opacity {
+        mesh.sample("vertex_opacity", &opacity, 0);
     }
 
     mesh.write(&args.output.to_string_lossy())?;

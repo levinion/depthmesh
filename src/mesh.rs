@@ -7,12 +7,13 @@ use meshopt::{
 use nalgebra::{Matrix3, Matrix4};
 use std::fs::File;
 use std::io::{BufWriter, Write};
+
+#[derive(Default)]
 pub struct Mesh {
     vertices: Vec<f32>,
     indices: Vec<u32>,
     texcoords: Vec<f32>,
-    normals: Vec<f32>,
-    offset: f32,
+    attributes: Vec<(String, Vec<f32>)>,
 }
 
 type Rgb32FImage = ImageBuffer<Rgb<f32>, Vec<f32>>;
@@ -23,11 +24,9 @@ impl Mesh {
         depth: Rgb32FImage,
         threshold: f32,
         intrinsic: Matrix3<f32>,
-        normal: Option<Rgb32FImage>,
         scale: f32,
         reverse_z: bool,
         distance: bool,
-        offset: f32,
     ) -> Result<Self> {
         let (width, height) = depth.dimensions();
 
@@ -39,7 +38,6 @@ impl Mesh {
         let mut vertices: Vec<f32> = Vec::with_capacity((width * height * 3) as usize);
         let mut indices: Vec<u32> = Vec::new();
         let mut texcoords = Vec::with_capacity((width * height * 2) as usize);
-        let mut normals = Vec::with_capacity((width * height * 3) as usize);
 
         let mut valid = vec![0u32; (width * height) as usize];
         let mut index = 1;
@@ -81,21 +79,6 @@ impl Mesh {
 
                     texcoords.push(u);
                     texcoords.push(v);
-
-                    // calculate normals
-                    if let Some(ref normal) = normal {
-                        let npixel = normal.get_pixel(x, y);
-
-                        let nx = -npixel[0];
-                        let ny = npixel[1];
-                        let nz = if reverse_z { -npixel[2] } else { npixel[2] };
-
-                        let length = (nx * nx + ny * ny + nz * nz).sqrt();
-
-                        normals.push(nx / length);
-                        normals.push(ny / length);
-                        normals.push(nz / length);
-                    }
                 }
             }
         }
@@ -163,67 +146,38 @@ impl Mesh {
             vertices,
             indices,
             texcoords,
-            normals,
-            offset,
+            ..Default::default()
         };
 
         Ok(mesh)
     }
 
-    pub fn compute_normals(&mut self) {
+    pub fn sample(&mut self, name: &str, img: &Rgb32FImage, channel: usize) {
         let vertex_count = self.vertices.len() / 3;
+        let (width, height) = img.dimensions();
 
-        self.normals = vec![0.0; vertex_count * 3];
-
-        for tri in self.indices.chunks_exact(3) {
-            let i0 = tri[0] as usize;
-            let i1 = tri[1] as usize;
-            let i2 = tri[2] as usize;
-
-            let p0 = [
-                self.vertices[i0 * 3],
-                self.vertices[i0 * 3 + 1],
-                self.vertices[i0 * 3 + 2],
-            ];
-
-            let p1 = [
-                self.vertices[i1 * 3],
-                self.vertices[i1 * 3 + 1],
-                self.vertices[i1 * 3 + 2],
-            ];
-
-            let p2 = [
-                self.vertices[i2 * 3],
-                self.vertices[i2 * 3 + 1],
-                self.vertices[i2 * 3 + 2],
-            ];
-
-            let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-
-            let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-
-            let n = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-
-            for i in [i0, i1, i2] {
-                self.normals[i * 3] += n[0];
-                self.normals[i * 3 + 1] += n[1];
-                self.normals[i * 3 + 2] += n[2];
-            }
+        if channel > 2 || width == 0 || height == 0 || self.texcoords.len() / 2 != vertex_count {
+            return;
         }
 
-        for n in self.normals.chunks_exact_mut(3) {
-            let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        let raw_pixels = img.as_raw();
+        let mut sampled_channel = Vec::with_capacity(vertex_count);
 
-            if len > 1e-6 {
-                n[0] /= len;
-                n[1] /= len;
-                n[2] /= len;
-            }
+        for uv in self.texcoords.chunks_exact(2) {
+            let u = uv[0].clamp(0.0, 1.0);
+            let v = (1.0 - uv[1]).clamp(0.0, 1.0);
+
+            let x = ((u * (width - 1) as f32).round() as u32).min(width - 1);
+            let y = ((v * (height - 1) as f32).round() as u32).min(height - 1);
+
+            let pixel_idx = ((y * width + x) as usize) * 3;
+
+            let val = raw_pixels[pixel_idx + channel];
+
+            sampled_channel.push(val);
         }
+
+        self.attributes.push((name.to_owned(), sampled_channel));
     }
 
     pub fn optimize(&mut self, reduction: f32, error: f32) -> Result<()> {
@@ -251,9 +205,6 @@ impl Mesh {
         self.texcoords = remap_vertex_buffer(uvs, vertex_count, &remap_table).into_flattened();
 
         // re-calculate normals
-        let (normals, _) = self.normals.as_chunks::<3>();
-        self.normals = remap_vertex_buffer(normals, vertex_count, &remap_table).into_flattened();
-
         self.indices = remap_index_buffer(Some(&indices), vertex_count, &remap_table);
 
         Ok(())
@@ -263,48 +214,12 @@ impl Mesh {
         crate::utils::laplacian_smooth(&mut self.vertices, &self.indices, iterations, lambda);
     }
 
-    pub fn write(&mut self, path: &str) -> Result<()> {
-        let vertices = self.vertices.chunks_exact(3);
-        let texcoords = self.texcoords.chunks_exact(2);
-        let normals = self.normals.chunks_exact(3);
-
-        if vertices.len() != texcoords.len() || vertices.len() != normals.len() {
-            bail!("vertices, texcoords, normals not matched, the mesh will be wrong!");
-        }
-
-        let file = File::create(path)?;
-        let mut writer = BufWriter::new(file);
-
-        for v in self.vertices.chunks_exact(3) {
-            writeln!(writer, "v {:.6} {:.6} {:.6}", v[0], v[1], v[2])?;
-        }
-
-        for vt in self.texcoords.chunks_exact(2) {
-            writeln!(writer, "vt {:.6} {:.6}", vt[0], vt[1])?;
-        }
-
-        if self.normals.is_empty() {
-            self.compute_normals();
-        }
-        for vn in self.normals.chunks_exact(3) {
-            writeln!(writer, "vn {:.6} {:.6} {:.6}", vn[0], vn[1], vn[2])?;
-        }
-
-        for i in self.indices.chunks_exact(3) {
-            writeln!(
-                writer,
-                "f {0}/{0}/{0} {1}/{1}/{1} {2}/{2}/{2}",
-                i[0] + 1,
-                i[1] + 1,
-                i[2] + 1
-            )?;
-        }
-
-        writer.flush()?;
-        Ok(())
-    }
-
-    pub fn transform(&mut self, src: Matrix4<f32>, target: Matrix4<f32>) -> Result<()> {
+    pub fn transform(
+        &mut self,
+        src: Matrix4<f32>,
+        target: Matrix4<f32>,
+        offset: f32,
+    ) -> Result<()> {
         // S = T_world_to_cam * S_cam_to_world * S
         let t = target
             .try_inverse()
@@ -319,18 +234,95 @@ impl Mesh {
             let transformed = rotation * pos + translation;
             v[0] = transformed.x;
             v[1] = transformed.y;
-            v[2] = transformed.z - self.offset;
+            v[2] = transformed.z - offset;
         }
 
-        if !self.normals.is_empty() {
-            for n in self.normals.chunks_exact_mut(3) {
-                let nn = (rotation * nalgebra::Vector3::new(n[0], n[1], n[2])).normalize();
-                n[0] = nn.x;
-                n[1] = nn.y;
-                n[2] = nn.z;
+        Ok(())
+    }
+
+    pub fn write(&mut self, path: &str) -> Result<()> {
+        let num_vertices = self.vertices.len() / 3;
+        let num_faces = self.indices.len() / 3;
+
+        let has_texcoords = !self.texcoords.is_empty();
+        if has_texcoords && self.texcoords.len() / 2 != num_vertices {
+            bail!("texcoords count does not match vertices!");
+        }
+
+        let extra_keys: Vec<String> = self
+            .attributes
+            .iter()
+            .filter(|(_, vec)| vec.len() == num_vertices)
+            .map(|(k, _)| k.clone())
+            .collect();
+
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+
+        writeln!(writer, "ply")?;
+        writeln!(writer, "format ascii 1.0")?;
+        writeln!(writer, "comment Created by depthmesh")?;
+
+        writeln!(writer, "element vertex {}", num_vertices)?;
+
+        writeln!(writer, "property float x")?;
+        writeln!(writer, "property float y")?;
+        writeln!(writer, "property float z")?;
+
+        if has_texcoords {
+            writeln!(writer, "property float s")?;
+            writeln!(writer, "property float t")?;
+        }
+
+        for key in &extra_keys {
+            writeln!(writer, "property float {}", key)?;
+        }
+
+        writeln!(writer, "element face {}", num_faces)?;
+        writeln!(writer, "property list uchar int vertex_indices")?;
+        writeln!(writer, "end_header")?;
+
+        let extra_cols: Vec<&[f32]> = extra_keys
+            .iter()
+            .map(|k| {
+                self.attributes
+                    .iter()
+                    .find(|(key, _)| key == k)
+                    .map(|(_, vec)| vec.as_slice())
+                    .unwrap()
+            })
+            .collect();
+
+        for i in 0..num_vertices {
+            write!(
+                writer,
+                "{:.6} {:.6} {:.6}",
+                self.vertices[i * 3],
+                self.vertices[i * 3 + 1],
+                self.vertices[i * 3 + 2]
+            )?;
+
+            if has_texcoords {
+                write!(
+                    writer,
+                    " {:.6} {:.6}",
+                    self.texcoords[i * 2],
+                    1.0 - self.texcoords[i * 2 + 1]
+                )?;
             }
+
+            for col in &extra_cols {
+                write!(writer, " {:.6}", col[i])?;
+            }
+
+            writeln!(writer)?;
         }
 
+        for face in self.indices.chunks_exact(3) {
+            writeln!(writer, "3 {} {} {}", face[0], face[1], face[2])?;
+        }
+
+        writer.flush()?;
         Ok(())
     }
 }

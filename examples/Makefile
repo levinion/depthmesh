@@ -8,17 +8,19 @@ default:
 	$(MAKE) single-view
 
 single-view:
-	depthmesh -d ./depth/cam_00_frame.0000.exr -n ./normal/cam_00_frame.0000.exr -i $(INTRINSIC) -t $(THRESHOLD) -s $(SCALE) --optimize --smooth -D
+	depthmesh -d ./depth/cam_00_frame.0000.exr \
+		-n ./normal/cam_00_frame.0000.exr \
+		-i $(INTRINSIC) -t $(THRESHOLD) -s $(SCALE) --optimize --smooth -D -o mesh.ply
 
 multi-view:
 	depthmesh -d ./depth/cam_00_frame.0000.exr -n ./normal/cam_00_frame.0000.exr \
 		-i $(INTRINSIC) -t $(THRESHOLD) -s $(SCALE) \
 		--optimize --smooth -D \
-		-o view1.obj
+		-o view1.ply 
 	depthmesh -d ./depth/cam_00_frame.0000.exr -n ./normal/cam_00_frame.0000.exr \
 		-i $(INTRINSIC) -t $(THRESHOLD) -s $(SCALE) \
 		--source-pose $(VIEW1_POSE) --target-pose $(VIEW2_POSE) \
 		--optimize --smooth -D \
-		-o view2.obj
+		-o view2.ply
 
 .PHONY: default single-view multi-view

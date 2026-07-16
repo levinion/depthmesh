@@ -19,12 +19,17 @@ Options:
   -d, --depth <DEPTH>
   -o, --output <OUTPUT>
   -n, --normal <NORMAL>
+  -a, --albedo <ALBEDO>
+  -O, --opacity <OPACITY>
+  -r, --roughness <ROUGHNESS>
+  -m, --metallic <METALLIC>
   -t, --threshold <THRESHOLD>      [default: 0.1]
   -i, --intrinsic <INTRINSIC>
       --source-pose <SOURCE_POSE>
       --target-pose <TARGET_POSE>
+      --offset <OFFSET>            [default: 0]
   -s, --scale <SCALE>              [default: 1]
-  -r, --reverse-z
+      --reverse-z
   -D, --distance
       --optimize
       --reduction <REDUCTION>      [default: 0.1]
@@ -39,7 +44,7 @@ Options:
 ### Example
 
 ```shell
-depthmesh -d depth.exr -n normal.exr -i $(INTRINSIC) -o mesh.obj --optimize --smooth 
+depthmesh -d depth.exr -n normal.exr -i $(INTRINSIC) -o mesh.ply --optimize --smooth 
 ```
 
 See https://github.com/levinion/depthmesh/tree/main/examples for more.
