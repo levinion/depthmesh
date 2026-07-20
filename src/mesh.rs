@@ -305,11 +305,10 @@ impl Mesh {
         let mut writer = BufWriter::new(file);
 
         writeln!(writer, "ply")?;
-        writeln!(writer, "format ascii 1.0")?;
+        writeln!(writer, "format binary_little_endian 1.0")?;
         writeln!(writer, "comment Created by depthmesh")?;
 
         writeln!(writer, "element vertex {}", num_vertices)?;
-
         writeln!(writer, "property float x")?;
         writeln!(writer, "property float y")?;
         writeln!(writer, "property float z")?;
@@ -345,42 +344,32 @@ impl Mesh {
             .collect();
 
         for i in 0..num_vertices {
-            write!(
-                writer,
-                "{:.6} {:.6} {:.6}",
-                self.vertices[i * 3],
-                self.vertices[i * 3 + 1],
-                self.vertices[i * 3 + 2],
-            )?;
+            writer.write_all(&self.vertices[i * 3].to_le_bytes())?;
+            writer.write_all(&self.vertices[i * 3 + 1].to_le_bytes())?;
+            writer.write_all(&self.vertices[i * 3 + 2].to_le_bytes())?;
 
             if let Some(normals) = &self.normals {
-                write!(
-                    writer,
-                    " {:.6} {:.6} {:.6}",
-                    normals[i * 3],
-                    normals[i * 3 + 1],
-                    normals[i * 3 + 2]
-                )?;
+                writer.write_all(&normals[i * 3].to_le_bytes())?;
+                writer.write_all(&normals[i * 3 + 1].to_le_bytes())?;
+                writer.write_all(&normals[i * 3 + 2].to_le_bytes())?;
             }
 
             if has_texcoords {
-                write!(
-                    writer,
-                    " {:.6} {:.6}",
-                    self.texcoords[i * 2],
-                    1.0 - self.texcoords[i * 2 + 1]
-                )?;
+                writer.write_all(&self.texcoords[i * 2].to_le_bytes())?;
+                writer.write_all(&(1.0 - self.texcoords[i * 2 + 1]).to_le_bytes())?;
             }
 
             for col in &extra_cols {
-                write!(writer, " {:.6}", col[i])?;
+                writer.write_all(&col[i].to_le_bytes())?;
             }
-
-            writeln!(writer)?;
         }
 
         for face in self.indices.chunks_exact(3) {
-            writeln!(writer, "3 {} {} {}", face[0], face[1], face[2])?;
+            writer.write_all(&[3u8])?;
+
+            writer.write_all(&(face[0] as i32).to_le_bytes())?;
+            writer.write_all(&(face[1] as i32).to_le_bytes())?;
+            writer.write_all(&(face[2] as i32).to_le_bytes())?;
         }
 
         writer.flush()?;
