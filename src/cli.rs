@@ -11,19 +11,10 @@ pub struct Args {
     pub output: PathBuf,
 
     #[arg(short, long)]
-    pub normal: Option<PathBuf>,
-
-    #[arg(short, long)]
     pub albedo: Option<PathBuf>,
 
-    #[arg(short = 'O', long)]
-    pub opacity: Option<PathBuf>,
-
     #[arg(short, long)]
-    pub roughness: Option<PathBuf>,
-
-    #[arg(short, long)]
-    pub metallic: Option<PathBuf>,
+    pub normal: Option<PathBuf>,
 
     #[arg(short, long, default_value_t = 0.1)]
     pub threshold: f32,

@@ -77,36 +77,10 @@ fn main() -> Result<()> {
         mesh.optimize(args.reduction, args.error)?;
     }
 
-    let normal = args
-        .normal
-        .map(|path| image::open(path).map(|img| img.to_rgb32f()))
-        .transpose()?;
-
     let albedo = args
         .albedo
         .map(|path| image::open(path).map(|img| img.to_rgb32f()))
         .transpose()?;
-
-    let roughness = args
-        .roughness
-        .map(|path| image::open(path).map(|img| img.to_rgb32f()))
-        .transpose()?;
-
-    let metallic = args
-        .metallic
-        .map(|path| image::open(path).map(|img| img.to_rgb32f()))
-        .transpose()?;
-
-    let opacity = args
-        .opacity
-        .map(|path| image::open(path).map(|img| img.to_rgb32f()))
-        .transpose()?;
-
-    if let Some(normal) = normal {
-        mesh.sample("nx", &normal, 0);
-        mesh.sample("ny", &normal, 1);
-        mesh.sample("nz", &normal, 2);
-    }
 
     if let Some(albedo) = albedo {
         mesh.sample("red", &albedo, 0);
@@ -114,17 +88,12 @@ fn main() -> Result<()> {
         mesh.sample("blue", &albedo, 2);
     }
 
-    if let Some(roughness) = roughness {
-        mesh.sample("vertex_roughness", &roughness, 0);
-    }
+    let normal = args
+        .normal
+        .map(|path| image::open(path).map(|img| img.to_rgb32f()))
+        .transpose()?;
 
-    if let Some(metallic) = metallic {
-        mesh.sample("vertex_metallic", &metallic, 0);
-    }
-
-    if let Some(opacity) = opacity {
-        mesh.sample("vertex_opacity", &opacity, 0);
-    }
+    mesh.compute_normal(normal);
 
     mesh.write(&args.output.to_string_lossy())?;
     Ok(())

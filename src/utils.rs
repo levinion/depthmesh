@@ -1,3 +1,5 @@
+use nalgebra::Vector3;
+
 pub fn laplacian_smooth(vertices: &mut [f32], indices: &[u32], iterations: usize, lambda: f32) {
     for _ in 0..iterations {
         let mut new_positions = vec![0.0; vertices.len()];
@@ -27,8 +29,31 @@ pub fn laplacian_smooth(vertices: &mut [f32], indices: &[u32], iterations: usize
     }
 }
 
-pub fn max_depth_diff(depths: &[f32]) -> f32 {
-    let min = depths.iter().copied().fold(f32::INFINITY, f32::min);
-    let max = depths.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    max - min
+pub fn is_valid_face(p0: &[f32; 3], p1: &[f32; 3], p2: &[f32; 3], threshold: f32) -> bool {
+    let v0 = Vector3::new(p0[0], p0[1], p0[2]);
+    let v1 = Vector3::new(p1[0], p1[1], p1[2]);
+    let v2 = Vector3::new(p2[0], p2[1], p2[2]);
+
+    let e1 = v1 - v0;
+    let e2 = v2 - v0;
+
+    let normal = e1.cross(&e2);
+    let norm_len = normal.norm();
+    if norm_len < 1e-6 {
+        return false;
+    }
+    let normal = normal / norm_len;
+
+    let center = (v0 + v1 + v2) / 3.0;
+    let center_len = center.norm();
+    if center_len < 1e-6 {
+        return false;
+    }
+    let center = center / center_len;
+
+    let cos_theta = normal.dot(&center).abs();
+    let clamped_cos = cos_theta.clamp(0.0, 1.0);
+    let face_ray_angle_deg = clamped_cos.asin().to_degrees();
+
+    face_ray_angle_deg > threshold
 }
