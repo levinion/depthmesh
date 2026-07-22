@@ -29,7 +29,20 @@ pub fn laplacian_smooth(vertices: &mut [f32], indices: &[u32], iterations: usize
     }
 }
 
-pub fn is_valid_face(p0: &[f32; 3], p1: &[f32; 3], p2: &[f32; 3], threshold: f32) -> bool {
+pub fn is_valid_face(
+    p0: &[f32; 3],
+    p1: &[f32; 3],
+    p2: &[f32; 3],
+    threshold: f32,
+    safe_z_diff: f32,
+) -> bool {
+    let min_z = p0[2].min(p1[2]).min(p2[2]);
+    let max_z = p0[2].max(p1[2]).max(p2[2]);
+
+    if (max_z - min_z) < safe_z_diff {
+        return true;
+    }
+
     let v0 = Vector3::new(p0[0], p0[1], p0[2]);
     let v1 = Vector3::new(p1[0], p1[1], p1[2]);
     let v2 = Vector3::new(p2[0], p2[1], p2[2]);

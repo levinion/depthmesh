@@ -19,6 +19,9 @@ pub struct Args {
     #[arg(short, long, default_value_t = 3.)]
     pub threshold: f32,
 
+    #[arg(short, long, default_value_t = 0.01)]
+    pub z_diff: f32,
+
     #[arg(short, long, allow_hyphen_values = true)]
     pub intrinsic: String,
 
@@ -28,7 +31,7 @@ pub struct Args {
     #[arg(long, allow_hyphen_values = true)]
     pub target_pose: Option<String>,
 
-    #[arg(long, default_value_t = 0.0)]
+    #[arg(long, default_value_t = 0.0, allow_negative_numbers = true)]
     pub offset: f32,
 
     #[arg(short, long, default_value_t = 1.0, allow_negative_numbers = true)]

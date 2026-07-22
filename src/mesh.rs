@@ -27,6 +27,7 @@ impl Mesh {
     pub fn new(
         mut depth: Rgb32FImage,
         threshold: f32,
+        safe_z_diff: f32,
         intrinsic: Matrix3<f32>,
         scale: f32,
         reverse_z: bool,
@@ -111,7 +112,7 @@ impl Mesh {
                 let p3 = depth.get_pixel(x + 1, y + 1).0;
 
                 if let (Some(&i0), Some(&i1), Some(&i2)) = (idx_0, idx_1, idx_2)
-                    && utils::is_valid_face(&p0, &p1, &p2, threshold)
+                    && utils::is_valid_face(&p0, &p1, &p2, threshold, safe_z_diff)
                 {
                     indices.push(i0);
                     indices.push(i1);
@@ -119,7 +120,7 @@ impl Mesh {
                 }
 
                 if let (Some(&i1), Some(&i2), Some(&i3)) = (idx_1, idx_2, idx_3)
-                    && utils::is_valid_face(&p1, &p3, &p2, threshold)
+                    && utils::is_valid_face(&p1, &p3, &p2, threshold, safe_z_diff)
                 {
                     indices.push(i1);
                     indices.push(i3);

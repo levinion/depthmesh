@@ -31,6 +31,7 @@ fn main() -> Result<()> {
     let mut mesh = Mesh::new(
         depth,
         args.threshold,
+        args.z_diff,
         intrinsic,
         args.scale,
         args.reverse_z,
